@@ -57,7 +57,7 @@ public class IndexBuilder {
             
             int count = processedFiles.incrementAndGet();
             if (count % 100 == 0) {
-                System.out.println("Processed " + count + " files...");
+                System.out.println("Processed " + count + " files");
             }
         } catch (IOException e) {
             System.err.println("Error reading attributes for file: " + file);
