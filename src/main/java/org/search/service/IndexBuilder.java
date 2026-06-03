@@ -2,7 +2,8 @@ package org.search.service;
 
 import org.search.crawler.FileCrawler;
 import org.search.db.QueryHandler;
-import org.search.extractor.DocumentExtractor;
+import org.search.indexing.strategy.IndexPayload;
+import org.search.indexing.strategy.IndexingStrategySelector;
 import org.search.ranking.PathScorer;
 
 import java.io.IOException;
@@ -33,15 +34,21 @@ public class IndexBuilder {
                     indexedFiles, skippedUnchanged, removedStale, seconds);
         }
     }
-    
+
     private final ExecutorService executorService;
+    private final IndexingStrategySelector strategySelector;
     private final AtomicInteger processedFiles = new AtomicInteger(0);
     private final AtomicInteger skippedFiles = new AtomicInteger(0);
-    
+
     public IndexBuilder(int threads) {
-        this.executorService = Executors.newFixedThreadPool(threads);
+        this(threads, new IndexingStrategySelector());
     }
-    
+
+    public IndexBuilder(int threads, IndexingStrategySelector strategySelector) {
+        this.executorService = Executors.newFixedThreadPool(threads);
+        this.strategySelector = strategySelector;
+    }
+
     public IndexBuildReport buildIndex(String startDirectory) {
         long startNanos = System.nanoTime();
         QueryHandler.initializeDatabase();
@@ -52,7 +59,7 @@ public class IndexBuilder {
         FileCrawler.crawl(Paths.get(startDirectory), file -> {
             executorService.submit(() -> processFile(file, indexedStates, seenPaths));
         });
-        
+
         executorService.shutdown();
         try {
             if (!executorService.awaitTermination(60, TimeUnit.MINUTES)) {
@@ -64,6 +71,7 @@ public class IndexBuilder {
         }
 
         int removedFiles = QueryHandler.deleteFilesMissingFromSnapshot(startDirectory, seenPaths);
+        QueryHandler.reindexFullText();
         long elapsedMs = (System.nanoTime() - startNanos) / 1_000_000L;
         System.out.println("Indexing complete. Indexed files: " + processedFiles.get()
                 + ", skipped unchanged files: " + skippedFiles.get()
@@ -93,16 +101,18 @@ public class IndexBuilder {
                 return;
             }
 
-            DocumentExtractor.ExtractedData data = DocumentExtractor.extract(file);
+            IndexPayload payload = strategySelector.extract(file);
             QueryHandler.insertOrUpdateFile(
-                absolutePath,
-                data.getContent(), 
-                data.getMetadata(), 
-                lastModified,
-                PathScorer.score(file),
-                fileSize
+                    absolutePath,
+                    payload.searchableText(),
+                    payload.metadata(),
+                    lastModified,
+                    PathScorer.score(file),
+                    fileSize,
+                    payload.fileType(),
+                    payload.dominantColor()
             );
-            
+
             int count = processedFiles.incrementAndGet();
             if (count % 100 == 0) {
                 System.out.println("Processed " + count + " files");
