@@ -8,15 +8,17 @@ public class QueryParser {
 
     private static final String PATH_PREFIX = "path:";
     private static final String CONTENT_PREFIX = "content:";
+    private static final String COLOR_PREFIX = "color:";
 
     public ParsedQuery parse(String query) {
         if (query == null || query.isBlank()) {
-            return new ParsedQuery(List.of(), List.of(), List.of(), "");
+            return new ParsedQuery(List.of(), List.of(), List.of(), List.of(), "");
         }
 
         List<String> pathTerms = new ArrayList<>();
         List<String> contentTerms = new ArrayList<>();
         List<String> freeTerms = new ArrayList<>();
+        List<String> colorTerms = new ArrayList<>();
         List<String> tokens = tokenize(query.trim());
 
         String pendingQualifier = null;
@@ -27,7 +29,7 @@ public class QueryParser {
             }
 
             String lowerToken = normalized.toLowerCase(Locale.ROOT);
-            if (lowerToken.equals(PATH_PREFIX) || lowerToken.equals(CONTENT_PREFIX)) {
+            if (isQualifierToken(lowerToken)) {
                 pendingQualifier = lowerToken;
                 continue;
             }
@@ -42,12 +44,19 @@ public class QueryParser {
                 pendingQualifier = null;
                 continue;
             }
+            if (lowerToken.startsWith(COLOR_PREFIX)) {
+                addQualifierValue(colorTerms, normalized.substring(COLOR_PREFIX.length()));
+                pendingQualifier = null;
+                continue;
+            }
 
             if (pendingQualifier != null) {
                 if (pendingQualifier.equals(PATH_PREFIX)) {
                     addQualifierValue(pathTerms, normalized);
-                } else {
+                } else if (pendingQualifier.equals(CONTENT_PREFIX)) {
                     addQualifierValue(contentTerms, normalized);
+                } else {
+                    addQualifierValue(colorTerms, normalized);
                 }
                 pendingQualifier = null;
             } else {
@@ -55,7 +64,13 @@ public class QueryParser {
             }
         }
 
-        return new ParsedQuery(pathTerms, contentTerms, freeTerms, query.trim());
+        return new ParsedQuery(pathTerms, contentTerms, freeTerms, colorTerms, query.trim());
+    }
+
+    private static boolean isQualifierToken(String lowerToken) {
+        return lowerToken.equals(PATH_PREFIX)
+                || lowerToken.equals(CONTENT_PREFIX)
+                || lowerToken.equals(COLOR_PREFIX);
     }
 
     private void addQualifierValue(List<String> target, String rawValue) {

@@ -7,12 +7,23 @@ public class ParsedQuery {
     private final List<String> pathTerms;
     private final List<String> contentTerms;
     private final List<String> freeTerms;
+    private final List<String> colorTerms;
     private final String rawQuery;
 
     public ParsedQuery(List<String> pathTerms, List<String> contentTerms, List<String> freeTerms, String rawQuery) {
+        this(pathTerms, contentTerms, freeTerms, List.of(), rawQuery);
+    }
+
+    public ParsedQuery(
+            List<String> pathTerms,
+            List<String> contentTerms,
+            List<String> freeTerms,
+            List<String> colorTerms,
+            String rawQuery) {
         this.pathTerms = List.copyOf(pathTerms);
         this.contentTerms = List.copyOf(contentTerms);
         this.freeTerms = List.copyOf(freeTerms);
+        this.colorTerms = List.copyOf(colorTerms);
         this.rawQuery = rawQuery;
     }
 
@@ -28,12 +39,20 @@ public class ParsedQuery {
         return Collections.unmodifiableList(freeTerms);
     }
 
+    public List<String> getColorTerms() {
+        return Collections.unmodifiableList(colorTerms);
+    }
+
     public String getRawQuery() {
         return rawQuery;
     }
 
     public boolean hasQualifiers() {
-        return !pathTerms.isEmpty() || !contentTerms.isEmpty();
+        return !pathTerms.isEmpty() || !contentTerms.isEmpty() || !colorTerms.isEmpty();
+    }
+
+    public boolean hasFtsTerms() {
+        return !freeTerms.isEmpty() || !contentTerms.isEmpty();
     }
 
     public String describeForUi() {
@@ -46,6 +65,12 @@ public class ParsedQuery {
                 sb.append(" | ");
             }
             sb.append("content terms: ").append(contentTerms);
+        }
+        if (!colorTerms.isEmpty()) {
+            if (sb.length() > 0) {
+                sb.append(" | ");
+            }
+            sb.append("color terms: ").append(colorTerms);
         }
         if (!freeTerms.isEmpty()) {
             if (sb.length() > 0) {
