@@ -1,5 +1,7 @@
 package org.search.db;
 
+import org.search.search.fts.FtsSearchRepository;
+
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -10,8 +12,16 @@ public class QueryHandler {
         DbSchemaManager.initializeDatabase();
     }
 
-    public static void insertOrUpdateFile(String path, String content, String metadata, long lastModified, double pathScore, long fileSize) {
-        FileRepository.insertOrUpdateFile(path, content, metadata, lastModified, pathScore, fileSize);
+    public static void insertOrUpdateFile(
+            String path,
+            String content,
+            String metadata,
+            long lastModified,
+            double pathScore,
+            long fileSize,
+            String fileType,
+            String dominantColor) {
+        FileRepository.insertOrUpdateFile(path, content, metadata, lastModified, pathScore, fileSize, fileType, dominantColor);
     }
 
     public static void recordSearchQuery(String query) {
@@ -20,10 +30,6 @@ public class QueryHandler {
 
     public static List<String> getSuggestions(String prefix, int limit) {
         return SearchHistoryRepository.getSuggestions(prefix, limit);
-    }
-
-    public static void recordResultHit(String query, String path) {
-        SearchHistoryRepository.recordResultHit(query, path);
     }
 
     public static Map<String, Integer> getResultHitCounts(String query) {
@@ -42,22 +48,16 @@ public class QueryHandler {
         return FileRepository.getPathsMatchingAllPathTerms(pathTerms);
     }
 
-    public static Set<String> getPathsContainingAllPathTokens(List<String> tokens) {
-        return TermIndexRepository.getPathsContainingAllTokens(tokens, "path");
+    public static Set<String> getPathsMatchingAllColors(List<String> colorTerms) {
+        return FileRepository.getPathsMatchingAllColors(colorTerms);
     }
 
-    public static Set<String> getPathsMatchingTokenWithTypos(String token, String field) {
-        return TermIndexRepository.getPathsMatchingTokenWithTypos(token, field);
+    public static Set<String> ftsSearchPaths(String ftsQuery, int limit) {
+        return FtsSearchRepository.searchPaths(ftsQuery, limit);
     }
 
-    public static Set<String> getPathsContainingAllContentTokens(List<String> tokens) {
-        return TermIndexRepository.getPathsContainingAllTokens(tokens, "content");
-    }
-
-    public static Set<String> getPathsMatchingFreeToken(String token) {
-        Set<String> matches = TermIndexRepository.getPathsContainingAnyTokens(List.of(token), "path");
-        matches.addAll(TermIndexRepository.getPathsContainingAnyTokens(List.of(token), "content"));
-        return matches;
+    public static Set<String> getAllIndexedPaths() {
+        return FileRepository.getAllIndexedPaths();
     }
 
     public static List<FileRecord> getFilesByPaths(Set<String> paths, int limit) {
@@ -66,6 +66,10 @@ public class QueryHandler {
 
     public static void recordResultHits(String query, List<String> paths) {
         SearchHistoryRepository.recordResultHits(query, paths);
+    }
+
+    public static void reindexFullText() {
+        FtsIndexManager.reindexAll();
     }
 
     public static class FileIndexState {
@@ -91,12 +95,22 @@ public class QueryHandler {
         private final String content;
         private final long lastModified;
         private final double pathScore;
+        private final String fileType;
+        private final String dominantColor;
 
-        public FileRecord(String path, String content, long lastModified, double pathScore) {
+        public FileRecord(
+                String path,
+                String content,
+                long lastModified,
+                double pathScore,
+                String fileType,
+                String dominantColor) {
             this.path = path;
             this.content = content;
             this.lastModified = lastModified;
             this.pathScore = pathScore;
+            this.fileType = fileType;
+            this.dominantColor = dominantColor;
         }
 
         public String getPath() {
@@ -113,6 +127,14 @@ public class QueryHandler {
 
         public double getPathScore() {
             return pathScore;
+        }
+
+        public String getFileType() {
+            return fileType;
+        }
+
+        public String getDominantColor() {
+            return dominantColor;
         }
     }
 }

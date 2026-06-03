@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
@@ -16,8 +17,17 @@ final class FileRepository {
     private FileRepository() {
     }
 
-    static void insertOrUpdateFile(String path, String content, String metadata, long lastModified, double pathScore, long fileSize) {
-        String sql = "MERGE INTO files (path, content, metadata, last_modified, path_score, file_size) KEY(path) VALUES (?, ?, ?, ?, ?, ?)";
+    static void insertOrUpdateFile(
+            String path,
+            String content,
+            String metadata,
+            long lastModified,
+            double pathScore,
+            long fileSize,
+            String fileType,
+            String dominantColor) {
+        String sql = "MERGE INTO files (path, content, metadata, last_modified, path_score, file_size, file_type, dominant_color) "
+                + "KEY(path) VALUES (?, ?, ?, ?, ?, ?, ?, ?)";
         try (Connection conn = DatabaseContext.getConnection();
              PreparedStatement pstmt = conn.prepareStatement(sql)) {
             pstmt.setString(1, path);
@@ -26,8 +36,9 @@ final class FileRepository {
             pstmt.setLong(4, lastModified);
             pstmt.setDouble(5, pathScore);
             pstmt.setLong(6, fileSize);
+            pstmt.setString(7, fileType != null ? fileType : "other");
+            pstmt.setString(8, dominantColor);
             pstmt.executeUpdate();
-            TermIndexRepository.rebuildTermIndex(conn, path, content);
         } catch (SQLException e) {
             e.printStackTrace();
         }
@@ -103,7 +114,8 @@ final class FileRepository {
             orderedPaths = orderedPaths.subList(0, limit);
         }
         String placeholders = orderedPaths.stream().map(p -> "?").collect(Collectors.joining(","));
-        String sql = "SELECT path, content, last_modified, path_score FROM files WHERE path IN (" + placeholders + ")";
+        String sql = "SELECT path, content, last_modified, path_score, file_type, dominant_color FROM files WHERE path IN ("
+                + placeholders + ")";
         List<QueryHandler.FileRecord> records = new ArrayList<>();
         try (Connection conn = DatabaseContext.getConnection();
              PreparedStatement stmt = conn.prepareStatement(sql)) {
@@ -116,7 +128,9 @@ final class FileRepository {
                             rs.getString("path"),
                             rs.getString("content"),
                             rs.getLong("last_modified"),
-                            rs.getDouble("path_score")
+                            rs.getDouble("path_score"),
+                            rs.getString("file_type"),
+                            rs.getString("dominant_color")
                     ));
                 }
             }
@@ -139,7 +153,33 @@ final class FileRepository {
              PreparedStatement stmt = conn.prepareStatement(sql.toString())) {
             int idx = 1;
             for (String term : pathTerms) {
-                stmt.setString(idx++, "%" + term.toLowerCase() + "%");
+                stmt.setString(idx++, "%" + term.toLowerCase(Locale.ROOT) + "%");
+            }
+            try (ResultSet rs = stmt.executeQuery()) {
+                while (rs.next()) {
+                    results.add(rs.getString("path"));
+                }
+            }
+        } catch (SQLException e) {
+            e.printStackTrace();
+        }
+        return results;
+    }
+
+    static Set<String> getPathsMatchingAllColors(List<String> colorTerms) {
+        if (colorTerms.isEmpty()) {
+            return getAllIndexedPaths();
+        }
+        StringBuilder sql = new StringBuilder("SELECT path FROM files WHERE 1=1");
+        for (int i = 0; i < colorTerms.size(); i++) {
+            sql.append(" AND LOWER(dominant_color) = ?");
+        }
+        Set<String> results = new HashSet<>();
+        try (Connection conn = DatabaseContext.getConnection();
+             PreparedStatement stmt = conn.prepareStatement(sql.toString())) {
+            int idx = 1;
+            for (String color : colorTerms) {
+                stmt.setString(idx++, color.toLowerCase(Locale.ROOT));
             }
             try (ResultSet rs = stmt.executeQuery()) {
                 while (rs.next()) {
